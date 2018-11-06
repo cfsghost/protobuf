@@ -67,6 +67,12 @@ func init() {
 	if err := proto.SetExtension(cloneTestMessage, pb.E_Ext_More, ext); err != nil {
 		panic("SetExtension: " + err.Error())
 	}
+	if err := proto.SetExtension(cloneTestMessage, pb.E_Ext_Text, proto.String("hello")); err != nil {
+		panic("SetExtension: " + err.Error())
+	}
+	if err := proto.SetExtension(cloneTestMessage, pb.E_Greeting, []string{"one", "two"}); err != nil {
+		panic("SetExtension: " + err.Error())
+	}
 }
 
 func TestClone(t *testing.T) {

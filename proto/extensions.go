@@ -334,7 +334,7 @@ func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
 			// descriptors with the same field number.
 			return nil, errors.New("proto: descriptor conflict")
 		}
-		return e.value, nil
+		return extensionAsLegacyType(e.value), nil
 	}
 
 	if extension.ExtensionType == nil {
@@ -349,11 +349,11 @@ func GetExtension(pb Message, extension *ExtensionDesc) (interface{}, error) {
 
 	// Remember the decoded version and drop the encoded version.
 	// That way it is safe to mutate what we return.
-	e.value = v
+	e.value = extensionAsStorageType(v)
 	e.desc = extension
 	e.enc = nil
 	emap[extension.Field] = e
-	return e.value, nil
+	return extensionAsLegacyType(e.value), nil
 }
 
 // defaultExtensionValue returns the default value for extension.
@@ -500,7 +500,7 @@ func SetExtension(pb Message, extension *ExtensionDesc, value interface{}) error
 	}
 
 	extmap := epb.extensionsWrite()
-	extmap[extension.Field] = Extension{desc: extension, value: value}
+	extmap[extension.Field] = Extension{desc: extension, value: extensionAsStorageType(value)}
 	return nil
 }
 
@@ -540,4 +540,48 @@ func RegisterExtension(desc *ExtensionDesc) {
 // The argument pb should be a nil pointer to the struct type.
 func RegisteredExtensions(pb Message) map[int32]*ExtensionDesc {
 	return extensionMaps[reflect.TypeOf(pb).Elem()]
+}
+
+func extensionAsLegacyType(v interface{}) interface{} {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Bool, reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.String:
+		// Represent primitive types as a pointer to the value.
+		rv2 := reflect.New(rv.Type())
+		rv2.Elem().Set(rv)
+		v = rv2.Interface()
+	case reflect.Ptr:
+		// Represent slice types as the value itself.
+		switch rv.Type().Elem().Kind() {
+		case reflect.Slice:
+			if rv.IsNil() {
+				v = reflect.Zero(rv.Type().Elem()).Interface()
+			} else {
+				v = rv.Elem().Interface()
+			}
+		}
+	}
+	return v
+}
+
+func extensionAsStorageType(v interface{}) interface{} {
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Ptr:
+		// Represent slice types as the value itself.
+		switch rv.Type().Elem().Kind() {
+		case reflect.Bool, reflect.Int32, reflect.Int64, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.String:
+			if rv.IsNil() {
+				v = reflect.Zero(rv.Type().Elem()).Interface()
+			} else {
+				v = rv.Elem().Interface()
+			}
+		}
+	case reflect.Slice:
+		// Represent slice types as a pointer to the value.
+		if rv.Type().Elem().Kind() != reflect.Uint8 {
+			rv2 := reflect.New(rv.Type())
+			rv2.Elem().Set(rv)
+			v = rv2.Interface()
+		}
+	}
+	return v
 }
